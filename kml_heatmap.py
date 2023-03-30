@@ -1,51 +1,73 @@
-import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import xml.etree.ElementTree as ET
+import plotly.offline as go_offline
+import plotly.graph_objects as go
+import matplotlib
+from mpl_toolkits.mplot3d import axes3d
+from pylab import *
+from mpl_toolkits.mplot3d import Axes3D
+
+import shutil
+import requests
 import os
+import geopy.distance
+import numpy as np
+import math
+from zipfile import ZipFile
 new_directory = 'C:\\Users\\picart\\Documents\\GitHub\\OC3DMaps'
 os.chdir(new_directory)
 
-LINE_LEN = 28
-##
-#Ce programme permet la lecture des altitudes du fichier kml et la génération de la heatmap correspondante. A plus long terme, il faudra appliquer un masque précis sur la course d'orientation initiale / s'en servir sur Blender pour générer la 3D
-def create_heatmap(kml_filename):
-    kml_tree = ET.parse(kml_filename)
-    kml_root = kml_tree.getroot()
-    altitudes = [[]]
-    tab_coords = [[]]
-    i = 0 #permet "le changement de ligne"
-    max, min = -999, 999
-    for point in kml_root.findall(".//{http://www.opengis.net/kml/2.2}Point"):
-        coords = point.findtext(".//{http://www.opengis.net/kml/2.2}coordinates")
-        if coords:
-            if (i==LINE_LEN):
-                altitudes.append([])
-                tab_coords.append([])
-                i=0
-            new_coords = coords.split(",")
-            tab_coords[-1].append([float(new_coords[0]),float(new_coords[1]), float(new_coords[2])])
-            altitudes[-1].append(float(new_coords[2]))
-            if (float(new_coords[-1]) < min):
-                min = float(new_coords[-1])
-            if (float(new_coords[-1]) > max):
-                max = float(new_coords[-1])
-            i+=1
-        else:
-            print("Shouldn't be here.")
-    return altitudes, tab_coords, max, min
+
+kmz = ZipFile('Plateau-de-Jarrie.kmz', 'r')
+kmz.extractall( path=None, pwd=None)
+kml_file, tests = up.kml_parser("doc.kml")
+i = 0
+lats = []
+longs = []
+print(f"Test tile :{tests.has_tiles}, Test points : {tests.has_points}")
+lats, longs = up.kml_upgrader(kml_file, tests, lats, longs, 100)
+
+limite_req = 180
+print("Nb boucles à effectuer =" + f"{len(lats)//limite_req+1}")
+alts = up.request_heights(limite_req, longs, lats)
+up.write_kml(kml_file, lats, longs, alts)
+shutil.rmtree('files')
+os.remove("doc.kml")
+
+lat_data=lats
+lon_data=longs
+alts=alts
 
 
-##Lecture de toutes les altitudes des points, sachant que le premier point est en bas à gauche.
-if __name__ == '__main__':
-    filename = "fichier_converti.kml"
-    altitudes, tab_coords, max, min = create_heatmap(filename) # tab_coords pas encore utilisé
-    ax = sns.heatmap(altitudes, linewidth=0, square = True, annot = False, cmap="hot", vmin = min, vmax = max)
-    plt.savefig('./output/foo.png')
+terrain_cmap = matplotlib.cm.get_cmap('terrain')
+def matplotlib_to_plotly(cmap, pl_entries):
+    h = 1.0/(pl_entries-1)
+    pl_colorscale = []
+    for k in range(pl_entries):
+        C = list(map(np.uint8, np.array(cmap(k*h)[:3])*255))
+        pl_colorscale.append([k*h, 'rgb'+str((C[0], C[1], C[2]))])
+    return pl_colorscale
 
-    ax2 = sns.heatmap(altitudes, linewidth=0, square = True, annot = False, cmap="hot", vmin = min, vmax = max, cbar = False)
-    ax2.set_axis_off()
+terrain = matplotlib_to_plotly(terrain_cmap, 255)
 
-    plt.savefig('./output/alt_map.png', bbox_inches='tight', pad_inches=0)
-    plt.show()
+# CREATING 3D TERRAIN
+lat_min=min(lat_data)
+lat_max=max(lat_data)
+lon_min=min(lon_data)
+lon_max=max(lon_data)
+
+
+stretch_factor = 8
+alts_data = np.array(alts).reshape(55, 48)
+lon_data = np.linspace(lon_min, lon_max, alts_data.shape[1])
+lat_data = np.linspace(lat_min, lat_max, alts_data.shape[0])
+
+X, Y = np.meshgrid(lon_data, lat_data)
+
+fig = go.Figure(data=[go.Surface(colorscale=terrain,z=alts_data, x=X, y=Y)])
+fig.update_layout(title='Elevation Plot', autosize=True,
+                  margin=dict(l=65, r=50, b=65, t=90))
+
+go_offline.plot(fig, filename='test.html')
