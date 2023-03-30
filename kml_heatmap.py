@@ -16,6 +16,8 @@ import geopy.distance
 import numpy as np
 import math
 from zipfile import ZipFile
+import kml_upgrader as up
+
 new_directory = 'C:\\Users\\picart\\Documents\\GitHub\\OC3DMaps'
 os.chdir(new_directory)
 

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<GroundOverlay>
+	<name>PlateauDeJarrie</name>
+	<color>fcffffff</color>
+	<Icon>
+		<href>files/Tous Postes.jpg</href>
+		<viewBoundScale>0.75</viewBoundScale>
+	</Icon>
+	<LatLonBox>
+		<north>45.14226496474251</north>
+		<south>45.12330965514421</south>
+		<east>5.746593515219633</east>
+		<west>5.708736331754166</west>
+		<rotation>-1.714566469192505</rotation>
+	</LatLonBox>
+</GroundOverlay>
+</kml>
