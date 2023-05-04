@@ -1,7 +1,6 @@
 from PIL import Image
 import os
-new_directory = 'C:\\Users\\picart\\Documents\\GitHub\\OC3DMaps'
-os.chdir(new_directory)
+
 ##
 # Ce programme permet la fusion de toutes les tuiles afin d'obtenir une seule et même image, que l'on peut ensuite afficher sur le site.
 SIZE = 128

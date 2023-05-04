@@ -1,42 +1,29 @@
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-import xml.etree.ElementTree as ET
 import plotly.offline as go_offline
 import plotly.graph_objects as go
 import matplotlib
-from mpl_toolkits.mplot3d import axes3d
 from pylab import *
-from mpl_toolkits.mplot3d import Axes3D
 
 import shutil
-import requests
 import os
-import geopy.distance
 import numpy as np
-import math
 from zipfile import ZipFile
 import kml_upgrader as up
+import sys
 
-new_directory = 'C:\\Users\\picart\\Documents\\GitHub\\OC3DMaps'
-os.chdir(new_directory)
-
-
-kmz = ZipFile('Plateau-de-Jarrie.kmz', 'r')
+#Extraction du fichier kml depuis l'archive kmz
+kmz = ZipFile(sys.argv[1], 'r')
 kmz.extractall( path=None, pwd=None)
 kml_file, tests = up.kml_parser("doc.kml")
 i = 0
 lats = []
 longs = []
-print(f"Test tile :{tests.has_tiles}, Test points : {tests.has_points}")
-lats, longs = up.kml_upgrader(kml_file, tests, lats, longs, 100)
+lats, longs = up.kml_upgrader(kml_file, tests, lats, longs, 50)
 
-limite_req = 180
-print("Nb boucles à effectuer =" + f"{len(lats)//limite_req+1}")
-alts = up.request_heights(limite_req, longs, lats)
+alts = up.request_heights(longs, lats)
 up.write_kml(kml_file, lats, longs, alts)
 shutil.rmtree('files')
 os.remove("doc.kml")
+#Suppression des fichiers temporaires. Ils peuvent être gardés si nécessaire
 
 lat_data=lats
 lon_data=longs
@@ -54,7 +41,7 @@ def matplotlib_to_plotly(cmap, pl_entries):
 
 terrain = matplotlib_to_plotly(terrain_cmap, 255)
 
-# CREATING 3D TERRAIN
+# Création du terrain 3D
 lat_min=min(lat_data)
 lat_max=max(lat_data)
 lon_min=min(lon_data)
@@ -72,4 +59,4 @@ fig = go.Figure(data=[go.Surface(colorscale=terrain,z=alts_data, x=X, y=Y)])
 fig.update_layout(title='Elevation Plot', autosize=True,
                   margin=dict(l=65, r=50, b=65, t=90))
 
-go_offline.plot(fig, filename='test.html')
+go_offline.plot(fig, filename='plot.html')

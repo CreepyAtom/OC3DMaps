@@ -1,12 +1,8 @@
 import xml.etree.ElementTree as ET
 import requests
-import os
 import geopy.distance
 import numpy as np
 import math
-from zipfile import ZipFile
-new_directory = 'C:\\Users\\picart\\Documents\\GitHub\\OC3DMaps'
-os.chdir(new_directory)
 
 
 class KML_Tests:
@@ -29,13 +25,24 @@ class KML:
 ##
 #Ce programme permet la réécriture d'un fichier kml qui est composé de tiles et dont il manque les altitudes en un fichier kml composé de points (pour le moment, le centre des tuiles) et avec les altitudes. A l'avenir, ajouter un simple test qui vérifie que le fichier dispose de ces caractéristiques ou non.
 
-# Charger le fichier KML en mémoire
+# calcul_distance détermine la distance réelle entre deux points, étant donné leur latitude et longtitude
 def calcul_distance(long1, lat1, long2, lat2):
     coords_1 = (lat1,long1)
     coords_2 = (lat2,long2)
     return(geopy.distance.geodesic(coords_1, coords_2).m)
 
+# replace_string_in_xml_file permet d'écrire la requête d'altitudes à partir du template alt_request_template.xml
+def replace_string_in_xml_file(filename, longs, lats):
+    with open(filename, 'r') as f:
+        xml_data = f.read()
 
+    new_xml_data = xml_data.replace("LONG_STRING", longs)
+    new_xml_data = new_xml_data.replace("LAT_STRING", lats)
+
+    with open(f"alt_request.xml", 'w') as f:
+        f.write(new_xml_data)
+
+#kml_parser détermine quels types d'éléments se trouvent dans le fichier kml
 def kml_parser(kml_name):
     kml_tree = ET.parse(kml_name) #lecture du fichier kml simpliste
     kml_root = kml_tree.getroot()
@@ -61,14 +68,13 @@ def kml_parser(kml_name):
     kml_file = KML("kml_name", kml_tree, tests)
     return (kml_file, tests)
 
+#kml_upgrader modifie le kml en question suivant les résultats de kml_parser, pour n'obtenir que des points
 def kml_upgrader(kml_file, tests, lats, longs, precision):
     i = 0 #Compteur de points
     if (tests.has_tiles and not tests.has_points): # Si pas de points, conversion nécessaire
         folder = kml_file.tree.findall(".//{http://www.opengis.net/kml/2.2}Folder")
         hasFolder = (len(folder)>0)
-        print(" FOLDER ?????")
         if (not hasFolder):
-            print("NO FOLDER !!!!!!!!!!!!!!!!")
             folder = ET.Element("Folder")
         kml_root = kml_file.tree.getroot()
         # Trouver tous les éléments "GroundOverlay"
@@ -100,6 +106,7 @@ def kml_upgrader(kml_file, tests, lats, longs, precision):
 
 
         #Test précision longitudinale
+        #Si ce test n'est pas vérifié, un linspace est effectué pour obtenir la précision désirée (en argument)
         print(f"longs[0],lats[0],longs[1],lats[0] : {longs[0]},{lats[0]},{longs[1]},{lats[0]}")
         dist = calcul_distance(longs[0],lats[0],longs[1],lats[0])
         if (dist > precision):
@@ -109,6 +116,7 @@ def kml_upgrader(kml_file, tests, lats, longs, precision):
         else:
             new_longs = longs
         #Test précision latitudinale
+        #De même ici
         dist = calcul_distance(longs[0],lats[0],longs[0],lats[1])
         if (dist > precision):
             lat_len_multiplier = math.floor(dist/precision) + 1
@@ -117,7 +125,7 @@ def kml_upgrader(kml_file, tests, lats, longs, precision):
         else:
             new_lats = lats
 
-             # Créer un nouvel élément "Point" avec les coordonnées de latitude, de longitude et d'altitude
+        # Créer un nouvel élément "Point" avec les coordonnées de latitude, de longitude et d'altitude
         for latitude in new_lats:
             for longitude in new_longs:
                 point = ET.Element("Point")
@@ -147,6 +155,7 @@ def kml_upgrader(kml_file, tests, lats, longs, precision):
         print(f"Vérification du nombre de points lus : {i}")
         return convert_lists(new_lats, new_longs)
 
+#Convertit les listes des longitudes et latitudes uniques en listes contenant le nombre actuels de longitudes et latitudes nécessaires pour la requête
 def convert_lists(old_longs, old_lats):
     final_longs = []
     final_lats = []
@@ -156,53 +165,44 @@ def convert_lists(old_longs, old_lats):
             final_lats.append(lat)
     return final_longs, final_lats
 
+#Envoie la requête d'altitudes à partir des listes d'altitude et de longitude, retourne la liste des altitudes correspondantes
+#La méthode POST de l'API REST de l'IGN est utilisée ici
+def request_heights(longs_list, lats_list):
+    lat_string = f"{lats_list[0]}"
+    long_string = f"{longs_list[0]}"
+    for i in range(1,len(lats_list)):
+        lat_string += "|" + f"{lats_list[i]}"
+        long_string += "|" + f"{longs_list[i]}"
 
-def request_heights(limite_req, longs_list, lats_list):
-    responses = [] #liste des réponses aux requêtes, sur mon PC, chaque requête est limitée à env. 190 points, d'où la manip suivante
-    for i in range(0,len(lats_list)//limite_req):
-        lat_string = f"{lats_list[limite_req*i]}"
-        long_string = f"{longs_list[limite_req*i]}"
-        for j in range (limite_req*i+1,limite_req*(i+1)):
-            lat_string += "|" + f"{lats_list[j]}"
-            long_string += "|" + f"{longs_list[j]}"
+    replace_string_in_xml_file("request_template.xml", long_string, lat_string)
 
-        response = requests.get("https://wxs.ign.fr/calcul/alti/rest/elevation.json?lon=" + long_string + "&lat=" + lat_string + "&zonly=true")
+    # URL de requête de l'API
+    url = "https://wxs.ign.fr/calcul/alti/wps?service=WPS&version=1.0.0"
 
-        if response.status_code == 200:
-        # Traitement de la réponse
-            data = response.json()["elevations"][0]
-            print(f"Altitude du premier point de la liste : {data} mètres")
-            responses.append(response)
-        else:
-            print("Erreur lors de la récupération de l'altitude")
-    lat_string = f"{lats_list[(len(lats_list)//limite_req)*limite_req]}"
-    long_string = f"{longs_list[(len(lats_list)//limite_req)*limite_req]}"
-    for j in range((len(lats_list)//limite_req)*limite_req+1, len(lats_list)):
-        lat_string += "|" + f"{lats_list[j]}"
-        long_string += "|" + f"{longs_list[j]}"
+    #Chargement du template
+    with open("alt_request_template.xml", "r") as f:
+        xml_data = f.read()
 
-    response = requests.get("https://wxs.ign.fr/calcul/alti/rest/elevation.json?lon=" + long_string + "&lat=" + lat_string + "&zonly=true")
+    headers = {"Content-type": "text/xml"}
 
-
+    # Envoi de la requête POST
+    response = requests.post(url, data=xml_data, headers=headers)
     if response.status_code == 200:
-        # Traitement de la réponse, 200 = valide
-        data = response.json()["elevations"][0]
-        print(f"Altitude du premier point de la liste : {data} mètres")
-        responses.append(response)
+        print("Requête POST : succès")
     else:
-        print("Erreur lors de la récupération de l'altitude")
-    alts = []
-    for response in responses:
+        print(f"Requête POST : échec. Code {response.status_code}")
 
-        data = response.json()["elevations"]
-        for valeur in data:
-            alts.append(valeur) #on vide toute la liste de requêtes ici
-    return alts
+    root = ET.fromstring(response.content)
+
+    # On extrait les valeurs d'altitudes
+    altitudes = []
+    for elevation in root.findall("./elevation"):
+        altitudes.append(float(elevation.find("z").text))
 
 
+    return altitudes
 
-# Enregistrer le fichier KML modifié
-
+#write_kml réécrit le fichier kml avec le bon format.
 def write_kml(kml_file, lats, longs, alts):
     ET.indent(kml_file.tree, space='  ', level=0)
     kml_file.tree.write("fichier_converti.kml",encoding='utf-8', xml_declaration=True, default_namespace=False, method='xml', short_empty_elements=True) #écriture dans le fichier converti
@@ -218,24 +218,9 @@ def write_kml(kml_file, lats, longs, alts):
         coord.text = f"{longs[i]},{lats[i]},{alts[i]}"
         new_point.append(coord)
 
-    #étant donné qu'il est impossible de remplacer des valeurs directement avec ce module, il m'a fallu tout resupprimer et tout rajouter pour que les altitudes soient dans le fichier kml. Il y a sûrement bien mieux à faire
+    #étant donné qu'il est impossible de remplacer des valeurs directement avec ce module, il nous a fallu tout resupprimer et tout rajouter pour que les altitudes soient dans le fichier kml. Il y a sûrement bien mieux à faire
 
         folder2[0].insert(i,new_point)
 
     ET.indent(kml_tree2, space='  ', level=0)
     kml_tree2.write("fichier_converti.kml",encoding='us-ascii', xml_declaration=True, default_namespace=False, method='xml', short_empty_elements=False) #écriture dans le fichier converti
-##
-if __name__ == '__main__':
-
-    kmz = ZipFile('./Plateau-de-Jarrie.kmz', 'r')
-    kmz.extractall( path=None, pwd=None)
-    kml_file, tests = kml_parser("doc.kml")
-    i = 0
-    lats = []
-    longs = []
-    print(f"Test tile :{tests.has_tiles}, Test points : {tests.has_points}")
-    lats, longs = kml_upgrader(kml_file, tests, lats, longs, 50)
-    limite_req = 180
-    print("Nb boucles à effectuer =" + f"{len(lats)//limite_req+1}")
-    alts = request_heights(limite_req, longs, lats)
-    write_kml(kml_file, lats, longs, alts)
